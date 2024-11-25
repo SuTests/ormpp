@@ -1,6 +1,6 @@
 name: CI-SQLite
 
-on: [ push, pull_request ]
+on: [push, pull_request]
 
 jobs:
   build-and-test:
@@ -11,21 +11,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        configuration: [ Debug, Release ]
-        os: [ macos-latest, ubuntu-latest, windows-latest ]
+        configuration: [Debug, Release]
+        os: [macos-latest, ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Configure cmake
-        run : cmake -B${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} -DENABLE_SQLITE3=ON
+      - name: Cache CMake modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cmake
+            ~/Library/Caches/Homebrew
+            ~/Library/Caches/vcpkg
+            ~/AppData/Local/vcpkg/archives
+          key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-
+
+      - name: Configure CMake
+        run: |
+          mkdir -p ${{ github.workspace }}/build
+          cmake -B${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} -DENABLE_SQLITE3=ON
 
       - name: Build
-        run : cmake --build ${{ github.workspace }}/build --config ${{ matrix.configuration }}
+        run: |
+          cmake --build ${{ github.workspace }}/build --config ${{ matrix.configuration }}
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
-        env :
+        env:
           CTEST_OUTPUT_ON_FAILURE: 1
-        run : ctest -C ${{ matrix.configuration }} -j 1 -V
+        run: |
+          ctest -C ${{ matrix.configuration }} -j 1 -V
+
+      - name: Upload Artifacts
+        if: always() # 无论测试是否通过，都上传工件
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-${{ matrix.os }}-${{ matrix.configuration }}
+          path: |
+            ${{ github.workspace }}/build/*
